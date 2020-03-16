@@ -36,16 +36,17 @@ import name.dmaus.schxslt.testsuite.Application;
 
 import java.util.List;
 
+import java.io.File;
 import java.nio.file.Paths;
 
 @Mojo(name = "test-schematron")
 public class TestSchematronMojo extends AbstractMojo
 {
     @Parameter(required = true)
-    String testDir;
+    File testDir;
 
     @Parameter(required = true)
-    String configFile;
+    File configFile;
 
     @Parameter(required = true)
     List<Processor> processors;
@@ -54,8 +55,8 @@ public class TestSchematronMojo extends AbstractMojo
     {
         boolean failMojoExecution = false;
         for (Processor processor : processors) {
-            Application app = new Application(configFile, processor.id, processor.skip);
-            List<ValidationResult> results = app.run(Paths.get(testDir));
+            Application app = new Application(configFile.toURI().toString(), processor.id, processor.skip);
+            List<ValidationResult> results = app.run(Paths.get(testDir.toURI()));
             int success = 0;
             int skipped = 0;
             int failure = 0;
