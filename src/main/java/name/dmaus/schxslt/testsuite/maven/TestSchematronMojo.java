@@ -32,12 +32,22 @@ import org.apache.maven.plugins.annotations.Parameter;
 
 import name.dmaus.schxslt.testsuite.ValidationResult;
 import name.dmaus.schxslt.testsuite.ValidationStatus;
+import name.dmaus.schxslt.testsuite.Report;
+import name.dmaus.schxslt.testsuite.ReportSerializer;
 import name.dmaus.schxslt.testsuite.Application;
+import name.dmaus.schxslt.testsuite.XMLSerializer;
 
 import java.util.List;
 
 import java.io.File;
 import java.nio.file.Paths;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+
+import java.nio.file.Paths;
+
 
 @Mojo(name = "test-schematron")
 public class TestSchematronMojo extends AbstractMojo
@@ -56,37 +66,46 @@ public class TestSchematronMojo extends AbstractMojo
         boolean failMojoExecution = false;
         for (Processor processor : processors) {
             Application app = new Application(configFile.toURI().toString(), processor.id, processor.skip);
-            List<ValidationResult> results = app.run(Paths.get(testDir.toURI()));
-            int success = 0;
-            int skipped = 0;
-            int failure = 0;
+            Report report = app.run(Paths.get(testDir.toURI()));
 
-            for (ValidationResult result : results) {
+            for (ValidationResult result : report.getValidationResults()) {
                 final String msg = String.format("Status: %s Id: %s Label: %s", result.getStatus(), result.getTestcase().getId(), result.getTestcase().getLabel());
-                switch (result.getStatus()) {
-                case SUCCESS:
-                    success++;
-                    break;
-                case SKIPPED:
-                    getLog().info(msg);
-                    skipped++;
-                    break;
-                default:
+                if (result.getStatus() == ValidationStatus.FAILURE) {
                     getLog().error(msg);
-                    failure++;
+                } else if (result.getStatus() == ValidationStatus.SKIPPED) {
+                    getLog().info(msg);
                 }
             }
 
-            final String msg = String.format("[Passed/Skipped/Failed/Total] = [%d/%d/%d/%d]", success, skipped, failure, success + skipped + failure);
-            if (failure > 0) {
+            final String msg = String.format("[Passed/Skipped/Failed/Total] = [%d/%d/%d/%d]", report.countSuccess(), report.countSkipped(), report.countFailure(), report.countTotal());
+            if (report.countFailure() > 0) {
                 failMojoExecution = true;
                 getLog().error(msg);
             } else {
                 getLog().info(msg);
             }
+
+            if (processor.report != null) {
+                serializeReport(report, processor.report);
+            }
+
         }
         if (failMojoExecution) {
             throw new MojoFailureException("Some Schematron tests failed");
+        }
+    }
+
+    void serializeReport (final Report report, final File file) throws MojoExecutionException
+    {
+        try {
+            DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+            ReportSerializer reportSerializer = new ReportSerializer(builder);
+            XMLSerializer xmlSerializer = new XMLSerializer();
+
+            xmlSerializer.serialize(reportSerializer.serialize(report), Paths.get(file.toURI()));
+
+        } catch (ParserConfigurationException e) {
+            throw new MojoExecutionException("Cannot create DocumentBuilder instance", e);
         }
     }
 }
