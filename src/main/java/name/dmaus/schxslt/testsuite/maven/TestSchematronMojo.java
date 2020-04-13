@@ -30,12 +30,13 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 
+import name.dmaus.schxslt.testsuite.Testsuite;
+import name.dmaus.schxslt.testsuite.ValidationFactory;
 import name.dmaus.schxslt.testsuite.ValidationResult;
 import name.dmaus.schxslt.testsuite.ValidationStatus;
+import name.dmaus.schxslt.testsuite.Driver;
+import name.dmaus.schxslt.testsuite.TestsuiteRunner;
 import name.dmaus.schxslt.testsuite.Report;
-import name.dmaus.schxslt.testsuite.ReportSerializer;
-import name.dmaus.schxslt.testsuite.Application;
-import name.dmaus.schxslt.testsuite.XMLSerializer;
 
 import java.util.List;
 
@@ -48,64 +49,65 @@ import javax.xml.parsers.ParserConfigurationException;
 
 import java.nio.file.Paths;
 
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.FileSystemXmlApplicationContext;
 
 @Mojo(name = "test-schematron")
 public class TestSchematronMojo extends AbstractMojo
 {
-    @Parameter(required = true)
-    File testDir;
+
+    @Parameter(required = false, defaultValue = "${basedir}")
+    String basedir;
 
     @Parameter(required = true)
-    File configFile;
+    File config;
 
-    @Parameter(required = true)
-    List<Processor> processors;
+    @Parameter(required = false)
+    List<TestsuiteSpec> testsuites;
 
     public void execute () throws MojoExecutionException, MojoFailureException
     {
+        getLog().info(basedir);
         boolean failMojoExecution = false;
-        for (Processor processor : processors) {
-            Application app = new Application(configFile.toURI().toString(), processor.id, processor.skip);
-            Report report = app.run(Paths.get(testDir.toURI()));
-
+        ApplicationContext ctx = new FileSystemXmlApplicationContext(config.toURI().toString());
+        for (TestsuiteSpec spec : testsuites) {
+            Testsuite testsuite = spec.createTestsuite();
+            getLog().info("Running testsuite " + testsuite.getLabel());
+            ValidationFactory factory = (ValidationFactory)ctx.getBean(spec.processorId);
+            factory.setBaseDirectory(Paths.get(basedir));
+            Driver driver = new Driver(factory);
+            TestsuiteRunner runner;
+            if (spec.skip == null) {
+                runner = new TestsuiteRunner(driver);
+            } else {
+                runner = new TestsuiteRunner(driver, spec.skip);
+            }
+            Report report = runner.run(testsuite);
             for (ValidationResult result : report.getValidationResults()) {
                 final String msg = String.format("Status: %s Id: %s Label: %s", result.getStatus(), result.getTestcase().getId(), result.getTestcase().getLabel());
                 if (result.getStatus() == ValidationStatus.FAILURE) {
                     getLog().error(msg);
+                    getLog().error(result.getErrorMessage());
                 } else if (result.getStatus() == ValidationStatus.SKIPPED) {
                     getLog().info(msg);
                 }
             }
+            final String msg = String.format("[Passed/Skipped/Failed/Total] = [%d/%d/%d/%d]",
+                                             report.countSuccess(),
+                                             report.countSkipped(),
+                                             report.countFailure(),
+                                             report.countTotal()
+                                             );
 
-            final String msg = String.format("[Passed/Skipped/Failed/Total] = [%d/%d/%d/%d]", report.countSuccess(), report.countSkipped(), report.countFailure(), report.countTotal());
             if (report.countFailure() > 0) {
                 failMojoExecution = true;
                 getLog().error(msg);
             } else {
                 getLog().info(msg);
             }
-
-            if (processor.report != null) {
-                serializeReport(report, processor.report);
-            }
-
         }
         if (failMojoExecution) {
             throw new MojoFailureException("Some Schematron tests failed");
-        }
-    }
-
-    void serializeReport (final Report report, final File file) throws MojoExecutionException
-    {
-        try {
-            DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-            ReportSerializer reportSerializer = new ReportSerializer(builder);
-            XMLSerializer xmlSerializer = new XMLSerializer();
-
-            xmlSerializer.serialize(reportSerializer.serialize(report), Paths.get(file.toURI()));
-
-        } catch (ParserConfigurationException e) {
-            throw new MojoExecutionException("Cannot create DocumentBuilder instance", e);
         }
     }
 }
