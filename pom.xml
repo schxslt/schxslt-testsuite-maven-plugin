@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>name.dmaus.schxslt</groupId>
   <artifactId>testsuite-maven-plugin</artifactId>
-  <version>1.4-SNAPSHOT</version>
+  <version>1.4</version>
   <packaging>maven-plugin</packaging>
 
   <name>SchXslt Testsuite Maven Plugin</name>
@@ -58,7 +58,7 @@
     <dependency>
       <groupId>name.dmaus.schxslt</groupId>
       <artifactId>testsuite</artifactId>
-      <version>1.4-SNAPSHOT</version>
+      <version>1.4</version>
     </dependency>
     <!-- Spring Dependencies -->
     <dependency>
